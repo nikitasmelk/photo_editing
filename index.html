@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Advanced Photo Editor</title>
+    <style>
+        /* General Styling */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            color: #ecf0f1;
+            margin: 0;
+            padding: 0;
+        }
+        h1 {
+            text-align: center;
+            padding: 20px 0;
+            margin: 0;
+            background-color: rgba(0, 0, 0, 0.3);
+        }
+        /* Container Styling */
+        #container {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-around;
+            padding: 20px;
+            flex-wrap: wrap;
+        }
+        /* Section Styling */
+        #upload-section, #result-section {
+            width: 45%;
+            min-width: 300px;
+            padding: 20px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
+            margin-bottom: 20px;
+        }
+        /* Canvas Styling */
+        canvas {
+            border: 1px solid #7f8c8d;
+            border-radius: 5px;
+            display: block;
+            margin: 0 auto;
+            max-width: 100%;
+            max-height: 400px;
+            width: auto;
+            height: auto;
+        }
+        /* Controls Styling */
+        #controls {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-top: 20px;
+        }
+        #function-buttons, #download-button {
+            display: flex;
+            flex-direction: column;
+        }
+        .btn {
+            background-color: #2980b9;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            padding: 15px;
+            margin-bottom: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            width: 200px;
+        }
+        .btn:hover {
+            background-color: #3498db;
+        }
+        .btn.active {
+            background-color: #1abc9c;
+        }
+        /* Slider Styling */
+        .slider-container {
+            margin-bottom: 20px;
+            width: 200px;
+        }
+        .slider-container label {
+            margin-bottom: 5px;
+            display: block;
+        }
+        .slider-container input[type="range"] {
+            width: 100%;
+        }
+        /* Media Queries for Responsiveness */
+        @media (max-width: 768px) {
+            #container {
+                flex-direction: column;
+                align-items: center;
+            }
+            #upload-section, #result-section {
+                width: 90%;
+            }
+            #controls {
+                flex-direction: column;
+                align-items: center;
+            }
+            .btn {
+                width: 100%;
+            }
+            .slider-container {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Advanced Photo Editor</h1>
+    <div id="container">
+        <!-- Upload Section -->
+        <div id="upload-section">
+            <h2>Upload Image</h2>
+            <input type="file" id="upload-image" accept="image/*"><br><br>
+            <canvas id="original-canvas" width="400" height="400"></canvas>
+        </div>
+        <!-- Result Section -->
+        <div id="result-section">
+            <h2>Result Image</h2>
+            <canvas id="result-canvas" width="400" height="400"></canvas>
+            <div id="controls">
+                <!-- Function Buttons -->
+                <div id="function-buttons">
+                    <button class="btn" id="black-and-white">Black and White</button>
+                    <div class="slider-container">
+                        <label for="grid-size">Grid Size: <span id="grid-value">3</span>x<span id="grid-value">3</span></label>
+                        <input type="range" id="grid-size" min="2" max="10" value="3">
+                    </div>
+                    <button class="btn" id="shuffle-image">Shuffle Image</button>
+                    <div class="slider-container">
+                        <label for="circle-count">Number of Circles: <span id="circle-value">10</span></label>
+                        <input type="range" id="circle-count" min="1" max="50" value="10">
+                    </div>
+                    <button class="btn" id="rotate-circles">Rotate Circles</button>
+                </div>
+                <!-- Download Button -->
+                <div id="download-button">
+                    <button class="btn" id="download-image">Download Image</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const uploadImageInput = document.getElementById('upload-image');
+        const originalCanvas = document.getElementById('original-canvas');
+        const resultCanvas = document.getElementById('result-canvas');
+        const blackAndWhiteButton = document.getElementById('black-and-white');
+        const shuffleButton = document.getElementById('shuffle-image');
+        const rotateCirclesButton = document.getElementById('rotate-circles');
+        const downloadButton = document.getElementById('download-image');
+        const gridSizeSlider = document.getElementById('grid-size');
+        const gridValueLabel = document.querySelectorAll('#grid-value');
+        const circleCountSlider = document.getElementById('circle-count');
+        const circleValueLabel = document.getElementById('circle-value');
+
+        const originalCtx = originalCanvas.getContext('2d');
+        const resultCtx = resultCanvas.getContext('2d');
+
+        let originalImage = null;
+        let effectStack = []; // Stack of active effects with their parameters
+
+        // Update Grid Size Label
+        gridSizeSlider.addEventListener('input', function() {
+            gridValueLabel.forEach(label => label.textContent = gridSizeSlider.value);
+            // Update parameters if effect is active
+            effectStack.forEach(effect => {
+                if (effect.name === 'shuffle') {
+                    effect.params.gridSize = parseInt(gridSizeSlider.value);
+                    effect.params.shuffleOrder = null; // Invalidate shuffle order
+                }
+            });
+            applyEffects();
+        });
+
+        // Update Circle Count Label
+        circleCountSlider.addEventListener('input', function() {
+            circleValueLabel.textContent = circleCountSlider.value;
+            // Update parameters if effect is active
+            effectStack.forEach(effect => {
+                if (effect.name === 'rotateCircles') {
+                    effect.params.circleCount = parseInt(circleCountSlider.value);
+                    effect.params.circles = null; // Invalidate circles
+                }
+            });
+            applyEffects();
+        });
+
+        // Handle image upload
+        uploadImageInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) {
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    // Resize image to fit canvas
+                    const maxDim = 400;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > maxDim) {
+                            height *= maxDim / width;
+                            width = maxDim;
+                        }
+                    } else {
+                        if (height > maxDim) {
+                            width *= maxDim / height;
+                            height = maxDim;
+                        }
+                    }
+
+                    originalCanvas.width = width;
+                    originalCanvas.height = height;
+                    resultCanvas.width = width;
+                    resultCanvas.height = height;
+
+                    originalCtx.drawImage(img, 0, 0, width, height);
+                    originalImage = new Image();
+                    originalImage.onload = function() {
+                        effectStack = []; // Clear effects on new image
+                        resetButtons();
+                        applyEffects();
+                    }
+                    originalImage.src = originalCanvas.toDataURL();
+                }
+                img.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
+        });
+
+        // Reset all buttons to inactive
+        function resetButtons() {
+            blackAndWhiteButton.classList.remove('active');
+            shuffleButton.classList.remove('active');
+            rotateCirclesButton.classList.remove('active');
+        }
+
+        // Effect Functions
+        function applyEffects() {
+            if (!originalImage) return;
+            const width = resultCanvas.width;
+            const height = resultCanvas.height;
+
+            // Draw the original image onto the result canvas
+            resultCtx.clearRect(0, 0, width, height);
+            resultCtx.drawImage(originalImage, 0, 0, width, height);
+
+            // Get the image data
+            let imageData = resultCtx.getImageData(0, 0, width, height);
+
+            // Apply each effect from the stack
+            effectStack.forEach(effect => {
+                switch (effect.name) {
+                    case 'blackAndWhite':
+                        imageData = applyBlackAndWhite(imageData);
+                        break;
+                    case 'shuffle':
+                        imageData = applyShuffle(imageData, effect.params);
+                        break;
+                    case 'rotateCircles':
+                        imageData = applyRotateCircles(imageData, effect.params);
+                        break;
+                }
+            });
+
+            // Put the final image data back onto the canvas
+            resultCtx.putImageData(imageData, 0, 0);
+        }
+
+        function applyBlackAndWhite(imageData) {
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const grayscale = data[i]*0.3 + data[i+1]*0.59 + data[i+2]*0.11;
+                data[i] = grayscale;       // Red
+                data[i+1] = grayscale;     // Green
+                data[i+2] = grayscale;     // Blue
+                // data[i+3] is alpha channel
+            }
+            return imageData;
+        }
+
+        function applyShuffle(imageData, params) {
+            const { width, height } = imageData;
+            const gridSize = params.gridSize;
+            const tileWidth = Math.floor(width / gridSize);
+            const tileHeight = Math.floor(height / gridSize);
+
+            const tiles = [];
+
+            // Create an off-screen canvas for tile manipulation
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = width;
+            offCanvas.height = height;
+            const offCtx = offCanvas.getContext('2d');
+            offCtx.putImageData(imageData, 0, 0);
+
+            // Extract tiles
+            for (let y = 0; y < gridSize; y++) {
+                for (let x = 0; x < gridSize; x++) {
+                    const tileImageData = offCtx.getImageData(x * tileWidth, y * tileHeight, tileWidth, tileHeight);
+                    tiles.push({ x, y, tileImageData });
+                }
+            }
+
+            // Use stored shuffle order or create a new one
+            if (!params.shuffleOrder) {
+                params.shuffleOrder = [...Array(tiles.length).keys()];
+                params.shuffleOrder.sort(() => Math.random() - 0.5);
+            }
+
+            // Rearrange tiles based on shuffle order
+            const shuffledTiles = params.shuffleOrder.map(index => tiles[index]);
+
+            // Clear the off-screen canvas
+            offCtx.clearRect(0, 0, width, height);
+
+            // Draw shuffled tiles
+            let index = 0;
+            for (let y = 0; y < gridSize; y++) {
+                for (let x = 0; x < gridSize; x++) {
+                    const tile = shuffledTiles[index].tileImageData;
+                    offCtx.putImageData(tile, x * tileWidth, y * tileHeight);
+                    index++;
+                }
+            }
+
+            return offCtx.getImageData(0, 0, width, height);
+        }
+
+        function applyRotateCircles(imageData, params) {
+    const { width, height } = imageData;
+    const circleCount = params.circleCount;
+    const offCanvas = document.createElement('canvas');
+    offCanvas.width = width;
+    offCanvas.height = height;
+    const offCtx = offCanvas.getContext('2d');
+    offCtx.putImageData(imageData, 0, 0);
+
+    // Use stored circles or generate new ones
+    if (!params.circles) {
+        params.circles = [];
+        for (let i = 0; i < circleCount; i++) {
+            const radius = Math.random() * (Math.min(width, height) / 4) + 20;
+            const x = Math.random() * (width - 2 * radius) + radius;
+            const y = Math.random() * (height - 2 * radius) + radius;
+            const angle = Math.random() * 360;
+
+            params.circles.push({ x, y, radius, angle });
+        }
+    }
+
+    // Create a copy of the current image data
+    const resultImageData = offCtx.getImageData(0, 0, width, height);
+
+    // Clear the result canvas
+    resultCtx.clearRect(0, 0, width, height);
+    resultCtx.putImageData(resultImageData, 0, 0);
+
+    params.circles.forEach(circle => {
+        const { x, y, radius, angle } = circle;
+
+        // Create a temporary canvas for the circle
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = radius * 2;
+        tempCanvas.height = radius * 2;
+        const tempCtx = tempCanvas.getContext('2d');
+
+        // Copy the circular area to the temporary canvas
+        tempCtx.save();
+        tempCtx.beginPath();
+        tempCtx.arc(radius, radius, radius, 0, Math.PI * 2);
+        tempCtx.clip();
+
+        tempCtx.translate(radius, radius);
+        tempCtx.rotate((angle * Math.PI) / 180);
+        tempCtx.translate(-radius, -radius);
+
+        tempCtx.drawImage(offCanvas, x - radius, y - radius, radius * 2, radius * 2, 0, 0, radius * 2, radius * 2);
+        tempCtx.restore();
+
+        // Draw the rotated circle back onto the result canvas
+        resultCtx.save();
+        resultCtx.beginPath();
+        resultCtx.arc(x, y, radius, 0, Math.PI * 2);
+        resultCtx.clip();
+
+        resultCtx.drawImage(tempCanvas, x - radius, y - radius);
+
+        resultCtx.restore();
+    });
+
+    // Get the final image data from the result canvas
+    const finalImageData = resultCtx.getImageData(0, 0, width, height);
+
+    return finalImageData;
+}
+
+
+        // Toggle Effect Functions
+        function toggleEffect(effectName, buttonElement) {
+            const effectIndex = effectStack.findIndex(effect => effect.name === effectName);
+            if (effectIndex > -1) {
+                // Effect is active, remove it
+                effectStack.splice(effectIndex, 1);
+                buttonElement.classList.remove('active');
+            } else {
+                // Effect is inactive, add it with parameters
+                let params = {};
+                switch (effectName) {
+                    case 'blackAndWhite':
+                        params = {}; // No additional parameters
+                        break;
+                    case 'shuffle':
+                        params = {
+                            gridSize: parseInt(gridSizeSlider.value),
+                            shuffleOrder: null // Will be generated in applyShuffle
+                        };
+                        break;
+                    case 'rotateCircles':
+                        params = {
+                            circleCount: parseInt(circleCountSlider.value),
+                            circles: null // Will be generated in applyRotateCircles
+                        };
+                        break;
+                }
+                effectStack.push({ name: effectName, params });
+                buttonElement.classList.add('active');
+            }
+            applyEffects();
+        }
+
+        // Event Listeners for Buttons
+        blackAndWhiteButton.addEventListener('click', function() {
+            if (!originalImage) {
+                alert('Please upload an image first.');
+                return;
+            }
+            toggleEffect('blackAndWhite', blackAndWhiteButton);
+        });
+
+        shuffleButton.addEventListener('click', function() {
+            if (!originalImage) {
+                alert('Please upload an image first.');
+                return;
+            }
+            toggleEffect('shuffle', shuffleButton);
+        });
+
+        rotateCirclesButton.addEventListener('click', function() {
+            if (!originalImage) {
+                alert('Please upload an image first.');
+                return;
+            }
+            toggleEffect('rotateCircles', rotateCirclesButton);
+        });
+
+        // Implement download function
+        downloadButton.addEventListener('click', function() {
+            if (!originalImage) {
+                alert('Please upload an image and apply an effect first.');
+                return;
+            }
+            const link = document.createElement('a');
+            link.download = 'edited_image.png';
+            link.href = resultCanvas.toDataURL();
+            link.click();
+        });
+    </script>
+</body>
+</html>
